@@ -25,3 +25,9 @@ jobs:
       - name: test otel module
         run: go test ./... -race -count=1
         working-directory: otel
+      - name: build echo example
+        run: go build ./... && go vet ./...
+        working-directory: examples/echo
+      - name: build gin example
+        run: go build ./... && go vet ./...
+        working-directory: examples/gin

@@ -173,6 +173,14 @@ host := shost.New().
 	MustBuild()
 ```
 
+## Examples
+
+Standalone runnable examples with popular web frameworks (both implement
+`http.Handler`, so they plug into `httpsvc` directly) live in
+[examples/](examples/): [Echo](examples/echo/) with a cron heartbeat and
+health endpoints, and [Gin](examples/gin/) with a supervised background
+worker demonstrating restart backoff.
+
 ## Roadmap
 
 See [PLAN.md](PLAN.md): lifecycle events and restart policies (v0.2),
