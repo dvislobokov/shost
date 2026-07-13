@@ -148,6 +148,31 @@ cfg, err := sconf.Load[Config](
 
 The core module and all subpackages depend only on the standard library.
 
+## Observability
+
+The core exposes lifecycle events through `shost.Observer` — a struct of
+optional callbacks in the style of `httptrace.ClientTrace`
+(`HostStarted/HostStopped`, `ServiceStarted/Ready/Restarting/Stopped/Failed`),
+registered via `WithObserver`. Any telemetry stack can hook in without adding
+dependencies to the core.
+
+The separate module **`github.com/dvislobokov/shost/otel`** maps these events
+to OpenTelemetry: gauge `shost.host.up`, counters `shost.service.restarts` and
+`shost.service.failures`, histogram `shost.service.stop.duration`, and a
+`shost.service.stop` span per service shutdown.
+
+```go
+metricsHandler, provider, _ := shostotel.NewPrometheusHandler()
+obs, _ := shostotel.NewObserver(shostotel.WithMeterProvider(provider))
+mux.Handle("/metrics", metricsHandler)
+
+host := shost.New().
+	WithObserver(obs).
+	OnStopped(func() { provider.Shutdown(context.Background()) }).
+	AddService(httpsvc.New(":8080", mux)).
+	MustBuild()
+```
+
 ## Roadmap
 
 See [PLAN.md](PLAN.md): lifecycle events and restart policies (v0.2),

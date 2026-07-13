@@ -19,3 +19,9 @@ jobs:
         run: go vet ./...
       - name: test
         run: go test ./... -race -count=1
+      - name: vet otel module
+        run: go vet ./...
+        working-directory: otel
+      - name: test otel module
+        run: go test ./... -race -count=1
+        working-directory: otel

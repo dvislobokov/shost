@@ -96,6 +96,7 @@ type Builder struct {
 	onStarted       []func()
 	onStopping      []func()
 	onStopped       []func()
+	observers       []Observer
 	errs            []error
 }
 
@@ -197,6 +198,13 @@ func (b *Builder) OnStopped(fn func()) *Builder {
 	return b.addHook(&b.onStopped, "OnStopped", fn)
 }
 
+// WithObserver registers a lifecycle observer (see Observer). Multiple
+// observers are invoked in registration order.
+func (b *Builder) WithObserver(o Observer) *Builder {
+	b.observers = append(b.observers, o)
+	return b
+}
+
 func (b *Builder) addHook(hooks *[]func(), name string, fn func()) *Builder {
 	if fn == nil {
 		b.errs = append(b.errs, fmt.Errorf("shost: %s called with nil hook", name))
@@ -228,6 +236,7 @@ func (b *Builder) Build() (*Host, error) {
 		onStarted:       b.onStarted,
 		onStopping:      b.onStopping,
 		onStopped:       b.onStopped,
+		observers:       b.observers,
 		shutdownCh:      make(chan struct{}),
 		stoppingCh:      make(chan struct{}),
 	}, nil

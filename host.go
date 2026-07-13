@@ -25,6 +25,7 @@ type Host struct {
 	onStarted       []func()
 	onStopping      []func()
 	onStopped       []func()
+	observers       []Observer
 
 	shutdownOnce sync.Once
 	shutdownCh   chan struct{} // closed by Shutdown()
@@ -73,6 +74,11 @@ launch:
 		go h.supervise(i, reg, svcCtx, done[i], exits)
 		launched++
 		h.log.Information("service {Service} started", reg.svc.Name())
+		h.observe(func(o Observer) {
+			if o.ServiceStarted != nil {
+				o.ServiceStarted(reg.svc.Name())
+			}
+		})
 
 		r, ok := reg.svc.(Readier)
 		if !ok {
@@ -82,6 +88,11 @@ launch:
 		select {
 		case <-r.Ready():
 			h.log.Information("service {Service} ready", reg.svc.Name())
+			h.observe(func(o Observer) {
+				if o.ServiceReady != nil {
+					o.ServiceReady(reg.svc.Name())
+				}
+			})
 		case exit := <-exits:
 			causeIndex = exit.index
 			errs = append(errs, h.exitError(exit))
@@ -106,6 +117,11 @@ launch:
 
 	if !startupAborted {
 		h.runHooks("OnStarted", h.onStarted)
+		h.observe(func(o Observer) {
+			if o.HostStarted != nil {
+				o.HostStarted()
+			}
+		})
 		h.log.Information("host started")
 
 		select {
@@ -130,6 +146,11 @@ launch:
 	} else {
 		h.log.Information("host stopped")
 	}
+	h.observe(func(o Observer) {
+		if o.HostStopped != nil {
+			o.HostStopped(err)
+		}
+	})
 	return err
 }
 
@@ -149,6 +170,11 @@ type serviceExit struct {
 
 func (h *Host) exitError(exit serviceExit) error {
 	name := h.services[exit.index].svc.Name()
+	h.observe(func(o Observer) {
+		if o.ServiceFailed != nil {
+			o.ServiceFailed(name, exit.err)
+		}
+	})
 	if exit.err != nil {
 		h.log.Error(exit.err, "service {Service} failed, stopping host", name)
 		return fmt.Errorf("shost: service %s failed: %w", name, exit.err)
@@ -207,6 +233,11 @@ func (h *Host) supervise(i int, reg registration, ctx context.Context, done chan
 		} else {
 			h.log.Warning("service {Service} exited, restart attempt {Attempt} in {Delay}", name, attempts, delay)
 		}
+		h.observe(func(o Observer) {
+			if o.ServiceRestarting != nil {
+				o.ServiceRestarting(name, attempts, delay, err)
+			}
+		})
 
 		select {
 		case <-ctx.Done():
@@ -247,9 +278,11 @@ func (h *Host) stopAll(cancels []context.CancelFunc, done []chan error, launched
 		go func() { stopRes <- safeStop(svc, stopCtx) }()
 
 		stopped := true
+		var svcErr error
 		select {
 		case err := <-stopRes:
 			if err != nil {
+				svcErr = err
 				errs = append(errs, fmt.Errorf("shost: stopping service %s: %w", name, err))
 				h.log.Error(err, "service {Service} Stop returned error", name)
 			}
@@ -261,6 +294,9 @@ func (h *Host) stopAll(cancels []context.CancelFunc, done []chan error, launched
 			select {
 			case err := <-done[i]:
 				if err != nil && i != causeIndex && !errors.Is(err, context.Canceled) {
+					if svcErr == nil {
+						svcErr = err
+					}
 					errs = append(errs, fmt.Errorf("shost: service %s failed during shutdown: %w", name, err))
 					h.log.Error(err, "service {Service} failed during shutdown", name)
 				}
@@ -273,9 +309,19 @@ func (h *Host) stopAll(cancels []context.CancelFunc, done []chan error, launched
 			err := fmt.Errorf("shost: service %s did not stop within shutdown timeout", name)
 			errs = append(errs, err)
 			h.log.Warning("service {Service} did not stop within shutdown timeout", name)
+			h.observe(func(o Observer) {
+				if o.ServiceStopped != nil {
+					o.ServiceStopped(name, time.Since(began), err)
+				}
+			})
 			continue
 		}
 		h.log.Information("service {Service} stopped in {Elapsed}", name, time.Since(began))
+		h.observe(func(o Observer) {
+			if o.ServiceStopped != nil {
+				o.ServiceStopped(name, time.Since(began), svcErr)
+			}
+		})
 	}
 	return errs
 }
