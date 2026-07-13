@@ -55,7 +55,9 @@ func main() {
 	host := shost.New().
 		WithLogger(log). // *srog.Logger satisfies shost.Logger directly
 		WithShutdownTimeout(30 * time.Second).
-		AddService(&Worker{}).
+		WithStartTimeout(10 * time.Second).
+		AddService(&Worker{}, shost.WithRestart(shost.RestartPolicy{MaxAttempts: 5})).
+		OnStarted(func() { log.Information("app is up") }).
 		MustBuild()
 
 	if err := host.Run(); err != nil {
@@ -81,6 +83,17 @@ services in reverse registration order within the shutdown timeout.
   an error) stops the whole host; `Run` returns a non-nil error naming the service.
 - **Panics** in `Start`/`Stop` are recovered, logged with a stack trace, and
   treated as service errors.
+- **Restart policies** — `shost.WithRestart(shost.RestartPolicy{...})` supervises
+  a service: premature exits trigger restarts with exponential backoff
+  (`InitialDelay`/`MaxDelay`/`Factor`, defaults 1s/1m/2.0); the attempt counter
+  resets after `ResetAfter` of stable run; the host stops only when
+  `MaxAttempts` is exhausted (0 = unlimited).
+- **Readiness** — a service may implement `shost.Readier` (`Ready() <-chan
+  struct{}`); the host then waits for the channel to close before launching the
+  next service, bounded in total by `WithStartTimeout`.
+- **Lifecycle hooks** — `OnStarted` (all services launched and ready),
+  `OnStopping` (shutdown began), `OnStopped` (everything stopped) — the analog
+  of `IHostApplicationLifetime`. Hook panics are recovered and logged.
 - **Logging** — the `shost.Logger` interface is signature-compatible with srog;
   without a logger the host is silent, errors are still returned from `Run`.
 

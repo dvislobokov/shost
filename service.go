@@ -18,6 +18,15 @@ type Service interface {
 	Stop(ctx context.Context) error
 }
 
+// Readier is an optional interface a Service may implement to signal
+// readiness. When implemented, the Host waits for the returned channel to
+// be closed before launching the next registered service, bounded by
+// Builder.WithStartTimeout. The channel must be closed by Start once the
+// service is operational (e.g. a listener is accepting connections).
+type Readier interface {
+	Ready() <-chan struct{}
+}
+
 // ServiceFunc adapts a blocking run function into a Service with no
 // dedicated Stop logic: cancellation of the Start context is the only
 // stop signal.

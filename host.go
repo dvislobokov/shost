@@ -17,12 +17,17 @@ import (
 // call, context cancellation, or a service exiting on its own) and then
 // stops everything in reverse order within the shutdown timeout.
 type Host struct {
-	services        []Service
+	services        []registration
 	log             Logger
 	shutdownTimeout time.Duration
+	startTimeout    time.Duration
+	onStarted       []func()
+	onStopping      []func()
+	onStopped       []func()
 
 	shutdownOnce sync.Once
-	shutdownCh   chan struct{}
+	shutdownCh   chan struct{} // closed by Shutdown()
+	stoppingCh   chan struct{} // closed when shutdown begins; stops supervisors from restarting
 }
 
 // Run starts all services and blocks until SIGINT/SIGTERM or Shutdown.
@@ -47,42 +52,77 @@ func (h *Host) RunContext(ctx context.Context) error {
 	done := make([]chan error, len(h.services))
 	exits := make(chan serviceExit, len(h.services))
 
-	for i, svc := range h.services {
-		svcCtx, cancel := context.WithCancel(baseCtx)
-		cancels[i] = cancel
-		done[i] = make(chan error, 1)
-		go func(i int, svc Service) {
-			err := safeStart(svc, svcCtx)
-			done[i] <- err
-			exits <- serviceExit{index: i, err: err}
-		}(i, svc)
-		h.log.Information("service {Service} started", svc.Name())
+	var startTimeoutCh <-chan time.Time
+	if h.startTimeout > 0 {
+		timer := time.NewTimer(h.startTimeout)
+		defer timer.Stop()
+		startTimeoutCh = timer.C
 	}
-	h.log.Information("host started")
 
 	var errs []error
 	causeIndex := -1
+	launched := 0
+	startupAborted := false
 
-	select {
-	case <-ctx.Done():
-		h.log.Information("shutdown signal received")
-	case <-h.shutdownCh:
-		h.log.Information("shutdown requested")
-	case exit := <-exits:
-		causeIndex = exit.index
-		name := h.services[exit.index].Name()
-		if exit.err != nil {
-			err := fmt.Errorf("shost: service %s failed: %w", name, exit.err)
-			h.log.Error(exit.err, "service {Service} failed, stopping host", name)
+launch:
+	for i, reg := range h.services {
+		svcCtx, cancel := context.WithCancel(baseCtx)
+		cancels[i] = cancel
+		done[i] = make(chan error, 1)
+		go h.supervise(i, reg, svcCtx, done[i], exits)
+		launched++
+		h.log.Information("service {Service} started", reg.svc.Name())
+
+		r, ok := reg.svc.(Readier)
+		if !ok {
+			continue
+		}
+		h.log.Debug("waiting for service {Service} readiness", reg.svc.Name())
+		select {
+		case <-r.Ready():
+			h.log.Information("service {Service} ready", reg.svc.Name())
+		case exit := <-exits:
+			causeIndex = exit.index
+			errs = append(errs, h.exitError(exit))
+			startupAborted = true
+			break launch
+		case <-startTimeoutCh:
+			err := fmt.Errorf("shost: service %s not ready within start timeout %v", reg.svc.Name(), h.startTimeout)
+			h.log.Error(err, "service {Service} not ready within start timeout, stopping host", reg.svc.Name())
 			errs = append(errs, err)
-		} else {
-			err := fmt.Errorf("shost: service %s exited unexpectedly", name)
-			h.log.Error(err, "service {Service} exited unexpectedly, stopping host", name)
-			errs = append(errs, err)
+			startupAborted = true
+			break launch
+		case <-ctx.Done():
+			h.log.Information("shutdown signal received during startup")
+			startupAborted = true
+			break launch
+		case <-h.shutdownCh:
+			h.log.Information("shutdown requested during startup")
+			startupAborted = true
+			break launch
 		}
 	}
 
-	errs = append(errs, h.stopAll(cancels, done, causeIndex)...)
+	if !startupAborted {
+		h.runHooks("OnStarted", h.onStarted)
+		h.log.Information("host started")
+
+		select {
+		case <-ctx.Done():
+			h.log.Information("shutdown signal received")
+		case <-h.shutdownCh:
+			h.log.Information("shutdown requested")
+		case exit := <-exits:
+			causeIndex = exit.index
+			errs = append(errs, h.exitError(exit))
+		}
+	}
+
+	close(h.stoppingCh)
+	h.runHooks("OnStopping", h.onStopping)
+	errs = append(errs, h.stopAll(cancels, done, launched, causeIndex)...)
+	h.runHooks("OnStopped", h.onStopped)
+
 	err := errors.Join(errs...)
 	if err != nil {
 		h.log.Error(err, "host stopped with errors")
@@ -103,16 +143,95 @@ type serviceExit struct {
 	err   error
 }
 
-// stopAll stops services in reverse registration order under the shared
-// shutdown deadline. causeIndex marks a service whose Start error was
-// already reported as the shutdown cause.
-func (h *Host) stopAll(cancels []context.CancelFunc, done []chan error, causeIndex int) []error {
+func (h *Host) exitError(exit serviceExit) error {
+	name := h.services[exit.index].svc.Name()
+	if exit.err != nil {
+		h.log.Error(exit.err, "service {Service} failed, stopping host", name)
+		return fmt.Errorf("shost: service %s failed: %w", name, exit.err)
+	}
+	err := fmt.Errorf("shost: service %s exited unexpectedly", name)
+	h.log.Error(err, "service {Service} exited unexpectedly, stopping host", name)
+	return err
+}
+
+// supervise runs the service's Start, restarting it per the registration's
+// RestartPolicy. It sends the final Start error to done exactly once, and
+// reports to exits only when the exit should stop the host.
+func (h *Host) supervise(i int, reg registration, ctx context.Context, done chan<- error, exits chan<- serviceExit) {
+	name := reg.svc.Name()
+	pol := reg.restart
+	attempts := 0
+	var delay time.Duration
+	if pol != nil {
+		delay = pol.InitialDelay
+	}
+	for {
+		began := time.Now()
+		err := safeStart(reg.svc, ctx)
+
+		// Shutdown in progress: report the final result, never restart.
+		// stopAll filters context.Canceled as a graceful exit.
+		select {
+		case <-ctx.Done():
+			done <- err
+			return
+		case <-h.stoppingCh:
+			done <- err
+			return
+		default:
+		}
+
+		if pol == nil {
+			done <- err
+			exits <- serviceExit{index: i, err: err}
+			return
+		}
+
+		if time.Since(began) >= pol.ResetAfter {
+			attempts = 0
+			delay = pol.InitialDelay
+		}
+		attempts++
+		if pol.MaxAttempts > 0 && attempts > pol.MaxAttempts {
+			h.log.Error(err, "service {Service} exhausted {MaxAttempts} restart attempts, stopping host", name, pol.MaxAttempts)
+			done <- err
+			exits <- serviceExit{index: i, err: err}
+			return
+		}
+		if err != nil {
+			h.log.Warning("service {Service} exited with {Error}, restart attempt {Attempt} in {Delay}", name, err.Error(), attempts, delay)
+		} else {
+			h.log.Warning("service {Service} exited, restart attempt {Attempt} in {Delay}", name, attempts, delay)
+		}
+
+		select {
+		case <-ctx.Done():
+			done <- nil // prior failure was already handled by the policy
+			return
+		case <-h.stoppingCh:
+			done <- nil
+			return
+		case <-time.After(delay):
+		}
+
+		delay = time.Duration(float64(delay) * pol.Factor)
+		if delay > pol.MaxDelay {
+			delay = pol.MaxDelay
+		}
+		h.log.Information("service {Service} restarting", name)
+	}
+}
+
+// stopAll stops the launched services in reverse registration order under
+// the shared shutdown deadline. causeIndex marks a service whose Start
+// error was already reported as the shutdown cause.
+func (h *Host) stopAll(cancels []context.CancelFunc, done []chan error, launched, causeIndex int) []error {
 	stopCtx, cancel := context.WithTimeout(context.Background(), h.shutdownTimeout)
 	defer cancel()
 
 	var errs []error
-	for i := len(h.services) - 1; i >= 0; i-- {
-		svc := h.services[i]
+	for i := launched - 1; i >= 0; i-- {
+		svc := h.services[i].svc
 		name := svc.Name()
 		h.log.Debug("service {Service} stopping", name)
 		began := time.Now()
@@ -155,6 +274,19 @@ func (h *Host) stopAll(cancels []context.CancelFunc, done []chan error, causeInd
 		h.log.Information("service {Service} stopped in {Elapsed}", name, time.Since(began))
 	}
 	return errs
+}
+
+func (h *Host) runHooks(name string, hooks []func()) {
+	for _, fn := range hooks {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					h.log.Error(fmt.Errorf("panic: %v", r), "panic in {Hook} hook", name)
+				}
+			}()
+			fn()
+		}()
+	}
 }
 
 func safeStart(s Service, ctx context.Context) (err error) {
