@@ -19,6 +19,7 @@ import (
 type Host struct {
 	services        []registration
 	log             Logger
+	environment     Environment
 	shutdownTimeout time.Duration
 	startTimeout    time.Duration
 	onStarted       []func()
@@ -41,7 +42,7 @@ func (h *Host) Run() error {
 // RunContext is Run with a caller-provided shutdown trigger: cancellation
 // of ctx initiates graceful shutdown. No OS signals are installed.
 func (h *Host) RunContext(ctx context.Context) error {
-	h.log.Information("host starting {ServiceCount} services", len(h.services))
+	h.log.Information("host starting {ServiceCount} services in {Environment}", len(h.services), string(h.environment))
 
 	// Independent of ctx: per-service contexts are canceled one by one,
 	// in reverse order, during shutdown — not all at once when ctx fires.
@@ -131,6 +132,9 @@ launch:
 	}
 	return err
 }
+
+// Environment returns the host environment (Production by default).
+func (h *Host) Environment() Environment { return h.environment }
 
 // Shutdown triggers graceful shutdown programmatically. Safe to call from
 // any goroutine, any number of times; it does not wait for Run to return.

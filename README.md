@@ -97,6 +97,57 @@ services in reverse registration order within the shutdown timeout.
 - **Logging** — the `shost.Logger` interface is signature-compatible with srog;
   without a logger the host is silent, errors are still returned from `Run`.
 
+## Environments
+
+`shost.EnvironmentFromEnv("")` reads `APP_ENVIRONMENT` (unset → `Production`).
+Pass it to the builder via `WithEnvironment` and layer environment-specific
+config with sconf:
+
+```go
+env := shost.EnvironmentFromEnv("")
+cfg, err := sconf.Load[Config](
+	sconf.New().
+		AddYAMLFile("appsettings.yaml").
+		AddYAMLFile("appsettings."+env.String()+".yaml", sconf.Optional()).
+		AddEnvironmentVariables("APP_"),
+	os.Args[1:],
+)
+```
+
+## Subpackages
+
+- **`shost/httpsvc`** — `net/http` server as a Service: readiness once the
+  listener accepts, in-flight requests drained on shutdown under the host
+  deadline, forceful close when the deadline expires.
+
+  ```go
+  AddService(httpsvc.New(":8080", mux, httpsvc.WithName("api")))
+  ```
+
+- **`shost/cron`** — periodic jobs (timed BackgroundService). Runs never
+  overlap; job errors and panics go to `WithErrorHandler` and the schedule
+  continues, unless `StopOnError()` is set.
+
+  ```go
+  AddService(cron.Every("cleanup", time.Hour, cleanupJob, cron.RunImmediately()))
+  ```
+
+- **`shost/health`** — `Checker` registry with `/healthz` (liveness) and
+  `/readyz` (readiness) handlers for Kubernetes probes. Readiness is wired to
+  the host lifecycle:
+
+  ```go
+  reg := health.NewRegistry(health.CheckerFunc("db", db.Ping))
+  reg.Mount(mux)
+  host := shost.New().
+  	OnStarted(func() { reg.SetReady(true) }).
+  	OnStopping(func() { reg.SetReady(false) }).
+  	AddService(httpsvc.New(":8080", mux)).
+  	MustBuild()
+  ```
+
+The core module and all subpackages depend only on the standard library.
+
 ## Roadmap
 
 See [PLAN.md](PLAN.md): lifecycle events and restart policies (v0.2),

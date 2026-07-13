@@ -90,6 +90,7 @@ type registration struct {
 type Builder struct {
 	services        []registration
 	logger          Logger
+	environment     Environment
 	shutdownTimeout time.Duration
 	startTimeout    time.Duration
 	onStarted       []func()
@@ -111,6 +112,17 @@ func (b *Builder) WithLogger(l Logger) *Builder {
 		return b
 	}
 	b.logger = l
+	return b
+}
+
+// WithEnvironment sets the host environment (see EnvironmentFromEnv).
+// Defaults to Production.
+func (b *Builder) WithEnvironment(e Environment) *Builder {
+	if e == "" {
+		b.errs = append(b.errs, errors.New("shost: WithEnvironment called with empty environment"))
+		return b
+	}
+	b.environment = e
 	return b
 }
 
@@ -203,9 +215,14 @@ func (b *Builder) Build() (*Host, error) {
 	if log == nil {
 		log = nopLogger{}
 	}
+	env := b.environment
+	if env == "" {
+		env = Production
+	}
 	return &Host{
 		services:        append([]registration(nil), b.services...),
 		log:             log,
+		environment:     env,
 		shutdownTimeout: b.shutdownTimeout,
 		startTimeout:    b.startTimeout,
 		onStarted:       b.onStarted,
