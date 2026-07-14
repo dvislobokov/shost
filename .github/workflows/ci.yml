@@ -71,3 +71,21 @@ jobs:
       - name: build gin example
         run: go build ./... && go vet ./...
         working-directory: examples/gin
+
+  # Guards the core module's minimum supported Go version: the core is
+  # stdlib-only and must keep working on the go.mod floor. Submodules
+  # (otel, grpcsvc, grpcgw, winsvc) follow their dependencies instead.
+  min-go:
+    runs-on: ubuntu-latest
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: false
+      - name: vet core on minimum Go
+        run: go vet ./...
+      - name: test core on minimum Go
+        run: go test ./... -count=1

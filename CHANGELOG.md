@@ -8,6 +8,17 @@ Go modules in this repository are versioned together: the core
 `github.com/dvislobokov/shost` and the separate modules `shost/otel`,
 `shost/grpcsvc` and `shost/grpcgw` share the same version number.
 
+## [0.6.1] — 2026-07-14
+
+### Changed
+
+- **Minimum Go version of the core module lowered to 1.22** (was 1.24).
+  The core and its subpackages are standard-library-only; the newest
+  features they use are `math/rand/v2` (Go 1.22) and `log/slog` (Go 1.21).
+  A CI job now tests the core on the floor version. The `otel`, `grpcsvc`,
+  `grpcgw` and `winsvc` modules stay on Go 1.25 — their dependencies
+  (grpc, grpc-gateway, opentelemetry, x/sys) require it.
+
 ## [0.6.0] — 2026-07-14
 
 Daemon-ready: running shost applications as system services (systemd,
@@ -175,6 +186,7 @@ Initial release: the core hosting framework, standard library only.
   signature-compatible with srog; without a logger the host is silent while
   errors are still returned from `Run`.
 
+[0.6.1]: https://github.com/dvislobokov/shost/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/dvislobokov/shost/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/dvislobokov/shost/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/dvislobokov/shost/compare/v0.3.0...v0.4.0
