@@ -98,6 +98,10 @@ services in reverse registration order within the shutdown timeout.
   migrations, cache warm-up) sequentially before any service starts. A failed
   or panicking task prevents startup and `Run` returns its error; a shutdown
   signal during a task cancels it and exits cleanly.
+- **Reload** — `OnReload` hooks + `host.Reload()`: re-read configuration or
+  rotate logs without a restart. `Run` maps SIGHUP to `Reload` on Unix-like
+  systems; under the Windows SCM use the winsvc module
+  (`sc control <name> paramchange`).
 - **Logging** — the `shost.Logger` interface is signature-compatible with srog;
   without a logger the host is silent, errors are still returned from `Run`.
   For stdlib logging use `shost.SlogLogger(l)` — message templates are
@@ -162,7 +166,52 @@ cfg, err := sconf.Load[Config](
   `Stop`/`Wait` return the `Run` error for assertions. `shosttest.NewRecorder()`
   is an `Observer` that records lifecycle events (`rec.Has`, `rec.WaitFor`).
 
+- **`shost/sdnotify`** — systemd `Type=notify` integration: `READY=1` on
+  `OnStarted`, `STOPPING=1` on `OnStopping`, watchdog keep-alives when the
+  unit sets `WatchdogSec=`, plus a unit-file generator (`sdnotify.Unit`).
+  One call wires everything and is a no-op outside systemd:
+
+  ```go
+  host := sdnotify.Bind(shost.New().AddService(...)).MustBuild()
+  ```
+
+- **`shost/single`** — single-instance guarantee for agents: `flock` on
+  Unix-like systems, an exclusive file handle on Windows; the OS releases
+  the lock even on a crash, so there is no stale-pidfile handling.
+
+  ```go
+  lock, err := single.Acquire(single.DefaultPath("my-agent"))
+  if errors.Is(err, single.ErrAlreadyRunning) { os.Exit(1) }
+  defer lock.Release()
+  ```
+
 The core module and all subpackages above depend only on the standard library.
+
+## Windows service (separate module)
+
+**`github.com/dvislobokov/shost/winsvc`** — the analog of
+`Microsoft.Extensions.Hosting.WindowsServices`. A Go binary started by the
+Service Control Manager must speak the SCM protocol (signals never arrive);
+`winsvc.Run` bridges it to the host lifecycle: START_PENDING during startup
+tasks and readiness, RUNNING after `OnStarted`, graceful shutdown with
+STOP_PENDING checkpoints on Stop/Shutdown controls, `Host.Reload` on
+PARAMCHANGE, and startup errors in the Event Log. Outside SCM it falls back
+to `host.Run()`, so the same binary works in a terminal and as a service.
+
+```go
+func main() {
+	b := shost.New().
+		AddService(&Collector{}).
+		OnReload(reloadConfig)
+	if err := winsvc.Run(b, winsvc.WithName("my-agent")); err != nil {
+		os.Exit(1)
+	}
+}
+```
+
+`winsvc.Install`/`winsvc.Uninstall` register the service (auto or delayed
+start) and its Event Log source — wire them to `install`/`uninstall` CLI
+flags run elevated.
 
 ## gRPC (separate modules)
 
@@ -224,4 +273,5 @@ worker demonstrating restart backoff.
 See [PLAN.md](PLAN.md): lifecycle events and restart policies (v0.2),
 environments + sconf integration, `httpsvc`/`cron` adapters, health checks
 (v0.3), OpenTelemetry metrics and tracing (v0.4), startup tasks,
-cron expressions, slog adapter, `grpcsvc`/`grpcgw`, `shosttest` (v0.5).
+cron expressions, slog adapter, `grpcsvc`/`grpcgw`, `shosttest` (v0.5),
+daemon support: reload, `sdnotify`, `single`, `winsvc` (v0.6).

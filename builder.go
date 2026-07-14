@@ -103,6 +103,7 @@ type Builder struct {
 	onStarted       []func()
 	onStopping      []func()
 	onStopped       []func()
+	onReload        []func()
 	observers       []Observer
 	errs            []error
 }
@@ -223,6 +224,15 @@ func (b *Builder) OnStopped(fn func()) *Builder {
 	return b.addHook(&b.onStopped, "OnStopped", fn)
 }
 
+// OnReload registers a hook invoked by Host.Reload — typically to re-read
+// configuration or rotate log files. Reload is triggered by SIGHUP on
+// Unix-like systems (when using Run), by the service manager (see the
+// winsvc module) or programmatically. Hooks run in registration order;
+// panics are recovered and logged.
+func (b *Builder) OnReload(fn func()) *Builder {
+	return b.addHook(&b.onReload, "OnReload", fn)
+}
+
 // WithObserver registers a lifecycle observer (see Observer). Multiple
 // observers are invoked in registration order.
 func (b *Builder) WithObserver(o Observer) *Builder {
@@ -262,6 +272,7 @@ func (b *Builder) Build() (*Host, error) {
 		onStarted:       b.onStarted,
 		onStopping:      b.onStopping,
 		onStopped:       b.onStopped,
+		onReload:        b.onReload,
 		observers:       b.observers,
 		shutdownCh:      make(chan struct{}),
 		stoppingCh:      make(chan struct{}),

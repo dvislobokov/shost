@@ -26,8 +26,10 @@ type Host struct {
 	onStarted       []func()
 	onStopping      []func()
 	onStopped       []func()
+	onReload        []func()
 	observers       []Observer
 
+	reloadMu     sync.Mutex
 	shutdownOnce sync.Once
 	shutdownCh   chan struct{} // closed by Shutdown()
 	stoppingCh   chan struct{} // closed when shutdown begins; stops supervisors from restarting
@@ -38,6 +40,8 @@ type Host struct {
 func (h *Host) Run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	stopReload := h.notifyReloadSignal() // SIGHUP → Reload on Unix, no-op elsewhere
+	defer stopReload()
 	return h.RunContext(ctx)
 }
 
@@ -168,6 +172,22 @@ launch:
 
 // Environment returns the host environment (Production by default).
 func (h *Host) Environment() Environment { return h.environment }
+
+// ShutdownTimeout returns the configured graceful-shutdown bound. Useful
+// for service-manager adapters reporting stop progress (see winsvc).
+func (h *Host) ShutdownTimeout() time.Duration { return h.shutdownTimeout }
+
+// Reload invokes the OnReload hooks in registration order — the analog of
+// a daemon's SIGHUP handling (re-read configuration, rotate logs). Safe to
+// call from any goroutine; concurrent calls are serialized. Hook panics
+// are recovered and logged. When using Run on Unix-like systems, SIGHUP
+// triggers Reload automatically.
+func (h *Host) Reload() {
+	h.reloadMu.Lock()
+	defer h.reloadMu.Unlock()
+	h.log.Information("reload requested")
+	h.runHooks("OnReload", h.onReload)
+}
 
 // Shutdown triggers graceful shutdown programmatically. Safe to call from
 // any goroutine, any number of times; it does not wait for Run to return.

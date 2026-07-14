@@ -8,6 +8,44 @@ Go modules in this repository are versioned together: the core
 `github.com/dvislobokov/shost` and the separate modules `shost/otel`,
 `shost/grpcsvc` and `shost/grpcgw` share the same version number.
 
+## [0.6.0] — 2026-07-14
+
+Daemon-ready: running shost applications as system services (systemd,
+Windows SCM) — the foundation for building system agents.
+
+### Added
+
+- **Reload** — `Builder.OnReload(fn)` hooks and `Host.Reload()`: re-read
+  configuration or rotate logs without a restart. `Run` maps SIGHUP to
+  `Reload` on Unix-like systems; concurrent reloads are serialized and hook
+  panics are recovered. New `Host.ShutdownTimeout()` accessor for
+  service-manager adapters.
+- **`sdnotify` package** — systemd `Type=notify` integration, standard
+  library only: `Ready`/`Stopping`/`Status`/`Watchdog` notifications,
+  `WatchdogEnabled` (`WATCHDOG_USEC`/`WATCHDOG_PID`), abstract-socket
+  support, and `Bind(builder)` wiring `READY=1` to `OnStarted`,
+  `STOPPING=1` to `OnStopping` and a watchdog keep-alive service when the
+  unit sets `WatchdogSec=`. No-op outside systemd. `Unit(cfg)` generates a
+  `Type=notify` unit file for installers.
+- **`single` package** — single-instance guarantee, standard library only:
+  `Acquire(path)` takes a machine-wide lock (`flock` on Unix-like systems,
+  an exclusive file handle on Windows) released by the OS even on a crash;
+  returns `ErrAlreadyRunning` when another process holds it.
+- **`winsvc` module** — `github.com/dvislobokov/shost/winsvc`, the analog
+  of `Microsoft.Extensions.Hosting.WindowsServices`: `winsvc.Run(builder)`
+  runs the host under SCM control when started as a Windows service
+  (START_PENDING during startup, RUNNING after `OnStarted`, STOP_PENDING
+  with advancing checkpoints while services drain, PARAMCHANGE →
+  `Host.Reload`, startup/shutdown errors in the Event Log) and falls back
+  to `Host.Run` in a terminal or on other platforms.
+  `Install`/`Uninstall` register the service (automatic, delayed or manual
+  start) and its Event Log source.
+
+### Changed
+
+- The `otel` module now requires a tagged core version instead of a local
+  `replace` directive.
+
 ## [0.5.0] — 2026-07-14
 
 Developer experience and gRPC.
@@ -137,6 +175,7 @@ Initial release: the core hosting framework, standard library only.
   signature-compatible with srog; without a logger the host is silent while
   errors are still returned from `Run`.
 
+[0.6.0]: https://github.com/dvislobokov/shost/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/dvislobokov/shost/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/dvislobokov/shost/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/dvislobokov/shost/compare/v0.2.0...v0.3.0

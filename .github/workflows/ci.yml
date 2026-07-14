@@ -28,6 +28,7 @@ jobs:
             otel/go.sum
             grpcsvc/go.sum
             grpcgw/go.sum
+            winsvc/go.sum
       # The race detector needs cgo, so keep it to Linux.
       - name: set test flags
         run: |
@@ -58,6 +59,12 @@ jobs:
       - name: test grpcgw module
         run: go test ./... $TESTFLAGS -count=1
         working-directory: grpcgw
+      - name: vet winsvc module
+        run: go vet ./...
+        working-directory: winsvc
+      - name: test winsvc module
+        run: go test ./... $TESTFLAGS -count=1
+        working-directory: winsvc
       - name: build echo example
         run: go build ./... && go vet ./...
         working-directory: examples/echo
