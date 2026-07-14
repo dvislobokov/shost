@@ -3,6 +3,7 @@ package winsvc
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -10,11 +11,15 @@ import (
 )
 
 func TestBuildOptionsDefaultsToExeName(t *testing.T) {
-	o := buildOptions(`C:\Program Files\agent\my-agent.exe`, nil)
+	o := buildOptions(filepath.Join("some", "dir", "my-agent.exe"), nil)
 	if o.name != "my-agent" {
 		t.Fatalf("wrong default name: %q", o.name)
 	}
-	o = buildOptions("/usr/local/bin/my-agent", []Option{WithName("custom")})
+	o = buildOptions(filepath.Join("some", "dir", "my-agent"), nil)
+	if o.name != "my-agent" {
+		t.Fatalf("wrong default name without extension: %q", o.name)
+	}
+	o = buildOptions("my-agent", []Option{WithName("custom")})
 	if o.name != "custom" {
 		t.Fatalf("WithName not applied: %q", o.name)
 	}
