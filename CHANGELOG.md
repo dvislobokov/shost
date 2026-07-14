@@ -8,6 +8,15 @@ Go modules in this repository are versioned together: the core
 `github.com/dvislobokov/shost` and the separate modules `shost/otel`,
 `shost/grpcsvc` and `shost/grpcgw` share the same version number.
 
+## [0.6.2] — 2026-07-15
+
+### Added
+
+- **MIT license** — the repository now ships a LICENSE file covering the
+  core and all modules. All modules are re-tagged so their zips include
+  it (pkg.go.dev only renders documentation for modules with a detected
+  redistributable license).
+
 ## [0.6.1] — 2026-07-14
 
 ### Changed
@@ -186,6 +195,7 @@ Initial release: the core hosting framework, standard library only.
   signature-compatible with srog; without a logger the host is silent while
   errors are still returned from `Run`.
 
+[0.6.2]: https://github.com/dvislobokov/shost/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/dvislobokov/shost/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/dvislobokov/shost/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/dvislobokov/shost/compare/v0.4.0...v0.5.0

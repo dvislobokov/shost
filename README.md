@@ -3,6 +3,7 @@
 [![CI](https://github.com/dvislobokov/shost/actions/workflows/ci.yml/badge.svg)](https://github.com/dvislobokov/shost/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/dvislobokov/shost.svg)](https://pkg.go.dev/github.com/dvislobokov/shost)
 [![Go Report Card](https://goreportcard.com/badge/github.com/dvislobokov/shost)](https://goreportcard.com/report/github.com/dvislobokov/shost)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Hosting framework for Go, inspired by `Microsoft.Extensions.Hosting`. Part of the
 `s*` family: [sconf](https://dvislobokov.github.io/docs/) (configuration),
@@ -279,3 +280,7 @@ environments + sconf integration, `httpsvc`/`cron` adapters, health checks
 (v0.3), OpenTelemetry metrics and tracing (v0.4), startup tasks,
 cron expressions, slog adapter, `grpcsvc`/`grpcgw`, `shosttest` (v0.5),
 daemon support: reload, `sdnotify`, `single`, `winsvc` (v0.6).
+
+## License
+
+[MIT](LICENSE) — covers the core and all modules in this repository.
