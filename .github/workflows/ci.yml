@@ -3,28 +3,61 @@ name: ci
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: stable
+          cache-dependency-path: |
+            otel/go.sum
+            grpcsvc/go.sum
+            grpcgw/go.sum
+      # The race detector needs cgo, so keep it to Linux.
+      - name: set test flags
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            echo "TESTFLAGS=-race" >> "$GITHUB_ENV"
+          fi
       - name: gofmt
         run: test -z "$(gofmt -l .)"
       - name: vet
         run: go vet ./...
       - name: test
-        run: go test ./... -race -count=1
+        run: go test ./... $TESTFLAGS -count=1
       - name: vet otel module
         run: go vet ./...
         working-directory: otel
       - name: test otel module
-        run: go test ./... -race -count=1
+        run: go test ./... $TESTFLAGS -count=1
         working-directory: otel
+      - name: vet grpcsvc module
+        run: go vet ./...
+        working-directory: grpcsvc
+      - name: test grpcsvc module
+        run: go test ./... $TESTFLAGS -count=1
+        working-directory: grpcsvc
+      - name: vet grpcgw module
+        run: go vet ./...
+        working-directory: grpcgw
+      - name: test grpcgw module
+        run: go test ./... $TESTFLAGS -count=1
+        working-directory: grpcgw
       - name: build echo example
         run: go build ./... && go vet ./...
         working-directory: examples/echo
