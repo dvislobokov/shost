@@ -1,2 +1,4 @@
+github.com/dvislobokov/shost v0.6.0 h1:WN6IGAIV++REFerpH3v4CChJh7lWuFx1PMWM0AKYGX8=
+github.com/dvislobokov/shost v0.6.0/go.mod h1:qWmKj8vORRPp89d0Aq3agDRVMmWZgI/Qa3+Tem8kzVs=
 golang.org/x/sys v0.47.0 h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs=
 golang.org/x/sys v0.47.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
