@@ -94,8 +94,14 @@ services in reverse registration order within the shutdown timeout.
 - **Lifecycle hooks** — `OnStarted` (all services launched and ready),
   `OnStopping` (shutdown began), `OnStopped` (everything stopped) — the analog
   of `IHostApplicationLifetime`. Hook panics are recovered and logged.
+- **Startup tasks** — `AddStartupTask(name, fn)` runs one-shot work (database
+  migrations, cache warm-up) sequentially before any service starts. A failed
+  or panicking task prevents startup and `Run` returns its error; a shutdown
+  signal during a task cancels it and exits cleanly.
 - **Logging** — the `shost.Logger` interface is signature-compatible with srog;
   without a logger the host is silent, errors are still returned from `Run`.
+  For stdlib logging use `shost.SlogLogger(l)` — message templates are
+  rendered and placeholders become slog attributes.
 
 ## Environments
 
@@ -126,10 +132,15 @@ cfg, err := sconf.Load[Config](
 
 - **`shost/cron`** — periodic jobs (timed BackgroundService). Runs never
   overlap; job errors and panics go to `WithErrorHandler` and the schedule
-  continues, unless `StopOnError()` is set.
+  continues, unless `StopOnError()` is set. Fixed intervals via `Every`,
+  cron expressions via `At` + `Expr`/`MustExpr` (standard 5 fields, names,
+  steps, `@daily`-style aliases); `WithJitter` spreads simultaneous runs
+  across instances, `WithRunTimeout` bounds a single run's context.
 
   ```go
   AddService(cron.Every("cleanup", time.Hour, cleanupJob, cron.RunImmediately()))
+  AddService(cron.At("backup", cron.MustExpr("0 3 * * *"), backupJob,
+  	cron.WithJitter(time.Minute), cron.WithRunTimeout(30*time.Minute)))
   ```
 
 - **`shost/health`** — `Checker` registry with `/healthz` (liveness) and
@@ -146,7 +157,34 @@ cfg, err := sconf.Load[Config](
   	MustBuild()
   ```
 
-The core module and all subpackages depend only on the standard library.
+- **`shost/shosttest`** — test helpers: `shosttest.Start(t, builder)` runs the
+  host inside a test, blocks until started, and registers a cleanup;
+  `Stop`/`Wait` return the `Run` error for assertions. `shosttest.NewRecorder()`
+  is an `Observer` that records lifecycle events (`rec.Has`, `rec.WaitFor`).
+
+The core module and all subpackages above depend only on the standard library.
+
+## gRPC (separate modules)
+
+- **`github.com/dvislobokov/shost/grpcsvc`** — `*grpc.Server` as a Service:
+  readiness once the listener accepts, `GracefulStop` under the host deadline,
+  forceful `Stop` when the deadline expires.
+
+  ```go
+  AddService(grpcsvc.New(":9090", grpcServer, grpcsvc.WithName("grpc")))
+  ```
+
+- **`github.com/dvislobokov/shost/grpcgw`** — grpc-gateway (REST → gRPC
+  transcoding) server as a Service: owns the `runtime.ServeMux`, the client
+  connection to the gRPC endpoint and handler registration. Pass the
+  protoc-generated `RegisterXxxHandler` functions:
+
+  ```go
+  AddService(grpcgw.New(":8081", "localhost:9090",
+  	grpcgw.Register(pb.RegisterGreeterHandler),
+  	grpcgw.WithHandler(corsMiddleware), // optional HTTP middleware
+  ))
+  ```
 
 ## Observability
 
@@ -185,4 +223,5 @@ worker demonstrating restart backoff.
 
 See [PLAN.md](PLAN.md): lifecycle events and restart policies (v0.2),
 environments + sconf integration, `httpsvc`/`cron` adapters, health checks
-(v0.3), OpenTelemetry metrics and tracing (v0.4).
+(v0.3), OpenTelemetry metrics and tracing (v0.4), startup tasks,
+cron expressions, slog adapter, `grpcsvc`/`grpcgw`, `shosttest` (v0.5).

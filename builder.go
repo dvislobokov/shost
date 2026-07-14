@@ -1,6 +1,7 @@
 package shost
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -85,10 +86,16 @@ type registration struct {
 	restartErr error
 }
 
+type startupTask struct {
+	name string
+	fn   func(ctx context.Context) error
+}
+
 // Builder assembles a Host. All methods return the receiver for chaining;
 // configuration errors are accumulated and reported by Build.
 type Builder struct {
 	services        []registration
+	tasks           []startupTask
 	logger          Logger
 	environment     Environment
 	shutdownTimeout time.Duration
@@ -180,6 +187,24 @@ func (b *Builder) AddService(s Service, opts ...ServiceOption) *Builder {
 	return b
 }
 
+// AddStartupTask registers a one-shot task (database migration, cache
+// warm-up) run before any service starts. Tasks run sequentially in
+// registration order; a task returning an error — or panicking — prevents
+// the services from starting and Run returns the error. The passed ctx is
+// canceled by an OS signal or Shutdown; long tasks should respect it.
+func (b *Builder) AddStartupTask(name string, fn func(ctx context.Context) error) *Builder {
+	if name == "" {
+		b.errs = append(b.errs, errors.New("shost: AddStartupTask called with empty name"))
+		return b
+	}
+	if fn == nil {
+		b.errs = append(b.errs, fmt.Errorf("shost: AddStartupTask %q called with nil task", name))
+		return b
+	}
+	b.tasks = append(b.tasks, startupTask{name: name, fn: fn})
+	return b
+}
+
 // OnStarted registers a hook invoked once all services have been launched
 // (and reported ready, for services implementing Readier). Hooks run in
 // registration order; panics are recovered and logged.
@@ -229,6 +254,7 @@ func (b *Builder) Build() (*Host, error) {
 	}
 	return &Host{
 		services:        append([]registration(nil), b.services...),
+		tasks:           append([]startupTask(nil), b.tasks...),
 		log:             log,
 		environment:     env,
 		shutdownTimeout: b.shutdownTimeout,

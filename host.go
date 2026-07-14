@@ -18,6 +18,7 @@ import (
 // stops everything in reverse order within the shutdown timeout.
 type Host struct {
 	services        []registration
+	tasks           []startupTask
 	log             Logger
 	environment     Environment
 	shutdownTimeout time.Duration
@@ -66,8 +67,19 @@ func (h *Host) RunContext(ctx context.Context) error {
 	launched := 0
 	startupAborted := false
 
+	if len(h.tasks) > 0 {
+		aborted, err := h.runStartupTasks(ctx)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		startupAborted = aborted || err != nil
+	}
+
 launch:
 	for i, reg := range h.services {
+		if startupAborted {
+			break
+		}
 		svcCtx, cancel := context.WithCancel(baseCtx)
 		cancels[i] = cancel
 		done[i] = make(chan error, 1)
@@ -161,6 +173,45 @@ func (h *Host) Environment() Environment { return h.environment }
 // any goroutine, any number of times; it does not wait for Run to return.
 func (h *Host) Shutdown() {
 	h.shutdownOnce.Do(func() { close(h.shutdownCh) })
+}
+
+// runStartupTasks runs the registered startup tasks sequentially. It
+// returns aborted=true when shutdown was requested mid-startup (a clean
+// exit, no error), and a non-nil error when a task failed or panicked.
+func (h *Host) runStartupTasks(ctx context.Context) (aborted bool, err error) {
+	// The task context also reacts to programmatic Shutdown, which does
+	// not cancel ctx by itself.
+	taskCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() {
+		select {
+		case <-h.shutdownCh:
+			cancel()
+		case <-taskCtx.Done():
+		}
+	}()
+
+	for _, t := range h.tasks {
+		select {
+		case <-taskCtx.Done():
+			h.log.Information("shutdown requested during startup tasks")
+			return true, nil
+		default:
+		}
+		h.log.Information("startup task {Task} running", t.name)
+		began := time.Now()
+		taskErr := safeTask(t.fn, taskCtx)
+		if taskErr != nil {
+			if errors.Is(taskErr, context.Canceled) && taskCtx.Err() != nil {
+				h.log.Information("startup task {Task} canceled by shutdown", t.name)
+				return true, nil
+			}
+			h.log.Error(taskErr, "startup task {Task} failed, host will not start", t.name)
+			return false, fmt.Errorf("shost: startup task %s: %w", t.name, taskErr)
+		}
+		h.log.Information("startup task {Task} completed in {Elapsed}", t.name, time.Since(began))
+	}
+	return false, nil
 }
 
 type serviceExit struct {
@@ -346,6 +397,15 @@ func safeStart(s Service, ctx context.Context) (err error) {
 		}
 	}()
 	return s.Start(ctx)
+}
+
+func safeTask(fn func(ctx context.Context) error, ctx context.Context) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic: %v\n%s", r, debug.Stack())
+		}
+	}()
+	return fn(ctx)
 }
 
 func safeStop(s Service, ctx context.Context) (err error) {
