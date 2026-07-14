@@ -1,5 +1,9 @@
 # shost
 
+[![CI](https://github.com/dvislobokov/shost/actions/workflows/ci.yml/badge.svg)](https://github.com/dvislobokov/shost/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/dvislobokov/shost.svg)](https://pkg.go.dev/github.com/dvislobokov/shost)
+[![Go Report Card](https://goreportcard.com/badge/github.com/dvislobokov/shost)](https://goreportcard.com/report/github.com/dvislobokov/shost)
+
 Hosting framework for Go, inspired by `Microsoft.Extensions.Hosting`. Part of the
 `s*` family: [sconf](https://dvislobokov.github.io/docs/) (configuration),
 [srog](https://dvislobokov.github.io/docs/) (logging), sorm (ORM).
