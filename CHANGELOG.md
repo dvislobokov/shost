@@ -8,7 +8,11 @@ Go modules in this repository are versioned together: the core
 `github.com/dvislobokov/shost` and the separate modules `shost/otel`,
 `shost/grpcsvc` and `shost/grpcgw` share the same version number.
 
-## [0.7.0] — 2026-07-18
+## [1.0.0] — 2026-07-18
+
+First stable release. The public API of the core module and the
+`otel`, `grpcsvc`, `grpcgw` and `winsvc` modules is now covered by
+semantic-versioning compatibility guarantees.
 
 ### Added
 
