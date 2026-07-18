@@ -96,10 +96,35 @@ func (r *Registry) ReadyHandler() http.Handler {
 	})
 }
 
+// MountOption customizes the paths used by Mount.
+type MountOption func(*mountOptions)
+
+type mountOptions struct {
+	live  string
+	ready string
+}
+
+// WithLivePath overrides the liveness path (default "/healthz").
+func WithLivePath(path string) MountOption {
+	return func(o *mountOptions) { o.live = path }
+}
+
+// WithReadyPath overrides the readiness path (default "/readyz").
+func WithReadyPath(path string) MountOption {
+	return func(o *mountOptions) { o.ready = path }
+}
+
 // Mount registers LiveHandler at /healthz and ReadyHandler at /readyz.
-func (r *Registry) Mount(mux *http.ServeMux) {
-	mux.Handle("/healthz", r.LiveHandler())
-	mux.Handle("/readyz", r.ReadyHandler())
+// Override either path with WithLivePath / WithReadyPath:
+//
+//	reg.Mount(mux, health.WithLivePath("/live"), health.WithReadyPath("/ready"))
+func (r *Registry) Mount(mux *http.ServeMux, opts ...MountOption) {
+	o := mountOptions{live: "/healthz", ready: "/readyz"}
+	for _, opt := range opts {
+		opt(&o)
+	}
+	mux.Handle(o.live, r.LiveHandler())
+	mux.Handle(o.ready, r.ReadyHandler())
 }
 
 func (r *Registry) runChecks(ctx context.Context) (bool, map[string]string) {

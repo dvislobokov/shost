@@ -92,3 +92,23 @@ func TestMountRoutes(t *testing.T) {
 		}
 	}
 }
+
+func TestMountCustomPaths(t *testing.T) {
+	reg := health.NewRegistry()
+	reg.SetReady(true)
+	mux := http.NewServeMux()
+	reg.Mount(mux, health.WithLivePath("/live"), health.WithReadyPath("/ready"))
+
+	for _, path := range []string{"/live", "/ready"} {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: expected 200, got %d", path, rec.Code)
+		}
+	}
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("/healthz: expected 404 after override, got %d", rec.Code)
+	}
+}

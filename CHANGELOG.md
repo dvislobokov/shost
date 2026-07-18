@@ -8,6 +8,25 @@ Go modules in this repository are versioned together: the core
 `github.com/dvislobokov/shost` and the separate modules `shost/otel`,
 `shost/grpcsvc` and `shost/grpcgw` share the same version number.
 
+## [0.7.0] — 2026-07-18
+
+### Added
+
+- **`shost/swaggerui`** — a fully bundled Swagger UI as a plain
+  `http.Handler`: the swagger-ui-dist assets (5.32.9) are embedded via
+  `go:embed`, so the UI works offline with no CDN and no middleware.
+  `Handler(opts...)` is mount-point relative (works under any
+  `http.StripPrefix`); `Mount(mux, "/swagger/", opts...)` wires it in one
+  call. Options: `WithSpec(name, bytes)` serves the OpenAPI document from
+  the handler itself (JSON/YAML content type by extension; several specs
+  become a selector), `WithSpecURL(url)` points the UI at a document
+  served elsewhere, `WithTitle` sets the page title. Standard library
+  only, like the rest of the core module.
+- **`health`: overridable probe paths** — `Registry.Mount` now accepts
+  options: `health.WithLivePath("/live")` and
+  `health.WithReadyPath("/ready")` override the default `/healthz` and
+  `/readyz`. The no-option call is unchanged.
+
 ## [0.6.2] — 2026-07-15
 
 ### Added

@@ -153,17 +153,29 @@ cfg, err := sconf.Load[Config](
   ```
 
 - **`shost/health`** — `Checker` registry with `/healthz` (liveness) and
-  `/readyz` (readiness) handlers for Kubernetes probes. Readiness is wired to
-  the host lifecycle:
+  `/readyz` (readiness) handlers for Kubernetes probes (paths overridable
+  via `health.WithLivePath` / `health.WithReadyPath`). Readiness is wired
+  to the host lifecycle:
 
   ```go
   reg := health.NewRegistry(health.CheckerFunc("db", db.Ping))
-  reg.Mount(mux)
+  reg.Mount(mux) // or reg.Mount(mux, health.WithReadyPath("/ready"))
   host := shost.New().
   	OnStarted(func() { reg.SetReady(true) }).
   	OnStopping(func() { reg.SetReady(false) }).
   	AddService(httpsvc.New(":8080", mux)).
   	MustBuild()
+  ```
+
+- **`shost/swaggerui`** — a fully bundled Swagger UI as a plain
+  `http.Handler`: assets embedded via `go:embed`, works offline, no
+  middleware, standard library only. Mount-point relative, so any prefix
+  works:
+
+  ```go
+  swaggerui.Mount(mux, "/swagger/",
+  	swaggerui.WithSpec("openapi.json", specBytes), // or WithSpecURL("/api/openapi.json")
+  	swaggerui.WithTitle("Billing API"))
   ```
 
 - **`shost/shosttest`** — test helpers: `shosttest.Start(t, builder)` runs the
