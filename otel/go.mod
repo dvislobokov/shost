@@ -3,7 +3,7 @@ module github.com/dvislobokov/shost/otel
 go 1.25.0
 
 require (
-	github.com/dvislobokov/shost v0.5.0
+	github.com/dvislobokov/shost v1.0.0
 	github.com/prometheus/client_golang v1.23.2
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/exporters/prometheus v0.66.0
