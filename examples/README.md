@@ -10,6 +10,9 @@ defaults to `:8080` and can be overridden with the `PORT` env variable.
 - **[gin](gin/)** — Gin API plus a supervised background worker: it crashes on
   purpose every third batch and `shost.WithRestart` restarts it with
   exponential backoff instead of killing the process.
+- **[swagger](swagger/)** — bundled Swagger UI (`shost/swaggerui`) serving an
+  embedded OpenAPI document at `/swagger/`, with health probes mounted on
+  custom paths (`/live`, `/ready`). Standard library only.
 
 ```
 cd examples/echo   # or examples/gin
