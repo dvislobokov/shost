@@ -8,6 +8,15 @@ Go modules in this repository are versioned together: the core
 `github.com/dvislobokov/shost` and the separate modules `shost/otel`,
 `shost/grpcsvc` and `shost/grpcgw` share the same version number.
 
+## [1.0.1] — 2026-07-18
+
+### Added
+
+- **`examples/swagger`** — a runnable, standard-library-only example of
+  the bundled Swagger UI: an embedded `openapi.json` served at
+  `/swagger/` via `shost/swaggerui`, with health probes mounted on
+  custom paths (`/live`, `/ready`).
+
 ## [1.0.0] — 2026-07-18
 
 First stable release. The public API of the core module and the
