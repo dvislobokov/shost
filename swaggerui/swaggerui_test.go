@@ -126,9 +126,10 @@ func TestMount(t *testing.T) {
 			t.Fatalf("%s: expected 200, got %d", path, rec.Code)
 		}
 	}
-	// net/http redirects the bare prefix to the slashed form.
-	if rec := get(t, mux, "/swagger"); rec.Code != http.StatusMovedPermanently {
-		t.Fatalf("/swagger: expected 301, got %d", rec.Code)
+	// net/http redirects the bare prefix to the slashed form; the status
+	// code differs across Go versions (301 before 1.26, 307 after).
+	if rec := get(t, mux, "/swagger"); rec.Code < 300 || rec.Code >= 400 {
+		t.Fatalf("/swagger: expected redirect, got %d", rec.Code)
 	}
 }
 
